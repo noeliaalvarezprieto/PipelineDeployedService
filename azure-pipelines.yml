@@ -37,17 +37,17 @@ pr:
 # ---------------------------------------------------------------------------
 variables:
   # Azure Container Registry
-  acrName: 'poc2acr'
-  acrLoginServer: 'poc2acr.azurecr.io'
+  acrName: 'poc2appacr'
+  acrLoginServer: 'poc2appacr.azurecr.io'
   imageRepository: 'poc2-app'
   containerPort: '3000'
 
   # Azure Container Apps
-  resourceGroup: 'poc2-rg'
-  location: 'westeurope'
+  resourceGroup: 'poc2-app-rg'
+  location: 'francecentral'
   containerAppEnvName: 'poc2-env'
-  stagingAppName: 'poc2-staging'
-  prodAppName: 'poc2-prod'
+  stagingAppName: 'poc2-app-staging'
+  prodAppName: 'poc2-app-prod'
 
   # Build
   dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
@@ -82,7 +82,7 @@ stages:
       displayName: 'Load secrets from Key Vault'
       inputs:
         azureSubscription: $(azureServiceConnection)
-        KeyVaultName: 'poc2-keyvault'
+        KeyVaultName: 'poc2-app-kv'
         SecretsFilter: 'sonar-token,prod-db-url,api-key'
         RunAsPreJob: true
 
@@ -115,7 +115,7 @@ stages:
       displayName: 'SonarCloud — prepare'
       inputs:
         SonarCloud: 'sonarcloud-service-connection'
-        organization: 'your-sonar-org'
+        organization: 'noeliaalvarezprieto'
         scannerMode: 'CLI'
         configMode: 'manual'
         cliProjectKey: $(sonarProjectKey)
@@ -213,7 +213,7 @@ stages:
       displayName: 'Load test secrets from Key Vault'
       inputs:
         azureSubscription: $(azureServiceConnection)
-        KeyVaultName: 'poc2-keyvault'
+        KeyVaultName: 'poc2-app-kv'
         SecretsFilter: 'test-db-url'
         RunAsPreJob: true
 
@@ -415,7 +415,7 @@ stages:
       displayName: 'Manual approval gate'
       inputs:
         notifyUsers: |
-          approver@yourorganisation.com
+          A00047469@myTUDublin.ie
         instructions: |
           Please review the staging deployment before approving promotion to production.
           Commit: $(Build.SourceVersion)

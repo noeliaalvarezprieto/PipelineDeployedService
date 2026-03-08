@@ -1,0 +1,111 @@
+version: 0.2
+
+# ---------------------------------------------------------------------------
+# PoC1 — buildspec.yml
+# Build stage: static analysis, Docker build, ECR push, artefact packaging
+# ---------------------------------------------------------------------------
+
+env:
+  # All secrets are resolved at runtime from Secrets Manager — no plaintext
+  # credentials appear anywhere in this file (addresses K8 / SC7).
+  secrets-manager:
+    SONAR_TOKEN: poc1-app/sonar:token
+  variables:
+    # ECR_REPO_URI and AWS_DEFAULT_REGION are injected by CloudFormation
+    # as CodeBuild environment variables — no hard-coding required.
+    NODE_ENV: production
+
+phases:
+
+  install:
+    runtime-versions:
+      nodejs: 20
+      docker: 20
+    commands:
+      # Pin npm to an exact version to avoid the Fuzzy Version anti-pattern
+      # identified by Vassallo et al. (2020).
+      - npm install -g npm@10.5.2
+      - npm ci --prefer-offline
+
+  pre_build:
+    commands:
+      # --- ECR login ---
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION |
+          docker login --username AWS --password-stdin $ECR_REPO_URI
+
+      # --- Tag image with the resolved commit SHA (satisfies FR3) ---
+      - COMMIT_SHA=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-8)
+      - IMAGE_URI="$ECR_REPO_URI:$COMMIT_SHA"
+      - IMAGE_LATEST="$ECR_REPO_URI:latest"
+      - echo "Image will be tagged $IMAGE_URI"
+
+      # --- Static analysis with SonarQube (non-blocking scan; fail on gate) ---
+      - echo "Running SonarQube static analysis..."
+      - npx sonar-scanner
+          -Dsonar.projectKey=poc1-app
+          -Dsonar.sources=src
+          -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.login=$SONAR_TOKEN
+          -Dsonar.qualitygate.wait=true
+      - echo "Static analysis complete."
+
+  build:
+    commands:
+      # Build Docker image — layer order optimised for cache efficiency
+      - echo "Building Docker image..."
+      - docker build
+          --cache-from $IMAGE_LATEST
+          --build-arg NODE_ENV=$NODE_ENV
+          --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          --build-arg VCS_REF=$CODEBUILD_RESOLVED_SOURCE_VERSION
+          -t $IMAGE_URI
+          -t $IMAGE_LATEST
+          .
+      - echo "Docker build complete."
+
+      # Push both commit-SHA tag and :latest to ECR
+      - echo "Pushing image to ECR..."
+      - docker push $IMAGE_URI
+      - docker push $IMAGE_LATEST
+      - echo "ECR push complete."
+
+  post_build:
+    commands:
+      # --- imagedefinitions.json (used by ECS rolling-update deploy action) ---
+      - printf '[{"name":"%s","imageUri":"%s"}]' poc1-app $IMAGE_URI > imagedefinitions.json
+
+      # --- taskdef.json (used by CodeDeployToECS blue/green deploy action) ---
+      # Replace IMAGE1_NAME placeholder with the resolved image URI at deploy time.
+      - cat taskdef-template.json |
+          sed "s|<IMAGE1_NAME>|$IMAGE_URI|g" > taskdef.json
+
+      - echo "Build artefacts written."
+      - echo "Build complete — image $IMAGE_URI"
+
+artifacts:
+  files:
+    - imagedefinitions.json   # ECS rolling-update input
+    - taskdef.json            # CodeDeploy blue/green input
+    - appspec.yml             # CodeDeploy AppSpec
+    - '**/*'                  # full source tree for downstream test stage
+  discard-paths: no
+  secondary-artifacts:
+    BuildReport:
+      files:
+        - imagedefinitions.json
+        - taskdef.json
+
+reports:
+  # CodeBuild Test Report Group — build-time lint results (optional)
+  BuildLintReport:
+    files:
+      - 'reports/lint-results.xml'
+    file-format: JUNITXML
+    discard-paths: yes
+
+cache:
+  # Cache node_modules and Docker layer cache between builds
+  paths:
+    - '/root/.npm/**/*'
+    - node_modules/**/*

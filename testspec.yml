@@ -1,0 +1,128 @@
+version: 0.2
+
+# ---------------------------------------------------------------------------
+# PoC1 — testspec.yml
+# Test stage: Jest unit tests + integration tests against a local container
+# A test pass-rate below 100 % fails this stage and halts the pipeline.
+# ---------------------------------------------------------------------------
+
+env:
+  variables:
+    NODE_ENV: test
+    # ECR_REPO_URI injected by CloudFormation as CodeBuild environment variable
+  secrets-manager:
+    # Any test-time secrets (e.g. a test-database connection string) are
+    # resolved from Secrets Manager — no plaintext values in this file.
+    TEST_DB_URL: poc1-app/test:db_url
+
+phases:
+
+  install:
+    runtime-versions:
+      nodejs: 20
+      docker: 20
+    commands:
+      - npm install -g npm@10.5.2
+      # Install dependencies (including devDependencies for Jest)
+      - npm ci --include=dev --prefer-offline
+
+  pre_build:
+    commands:
+      # Pull the image that was pushed by the Build stage so integration tests
+      # run against exactly the same artefact that will be deployed.
+      - COMMIT_SHA=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-8)
+      - IMAGE_URI="$ECR_REPO_URI:$COMMIT_SHA"
+      - echo "Pulling image $IMAGE_URI for integration tests..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION |
+          docker login --username AWS --password-stdin $ECR_REPO_URI
+      - docker pull $IMAGE_URI
+
+      # Start the application container locally so integration tests can
+      # issue real HTTP requests against it.
+      - echo "Starting application container for integration testing..."
+      - docker run -d
+          --name poc1-app-test
+          -p 3000:3000
+          -e NODE_ENV=test
+          -e DATABASE_URL=$TEST_DB_URL
+          $IMAGE_URI
+
+      # Wait until the container's /health endpoint responds 200.
+      - echo "Waiting for container health check..."
+      - |
+        for i in $(seq 1 30); do
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/health || true)
+          if [ "$STATUS" = "200" ]; then
+            echo "Container healthy after $i seconds."
+            break
+          fi
+          echo "  Attempt $i: status=$STATUS — retrying in 2 s..."
+          sleep 2
+        done
+        if [ "$STATUS" != "200" ]; then
+          echo "ERROR: Container did not become healthy within 60 seconds."
+          exit 1
+        fi
+
+  build:
+    commands:
+      # -----------------------------------------------------------------------
+      # Unit tests (Jest) — runs against source code without a container
+      # -----------------------------------------------------------------------
+      - echo "Running unit tests..."
+      - npx jest
+          --testPathPattern='src/__tests__/unit'
+          --coverage
+          --coverageReporters=text lcov
+          --reporters=default jest-junit
+          --forceExit
+          --ci
+      - echo "Unit tests complete."
+
+      # -----------------------------------------------------------------------
+      # Integration tests — runs against the locally spawned Docker container
+      # -----------------------------------------------------------------------
+      - echo "Running integration tests..."
+      - TEST_BASE_URL=http://localhost:3000
+          npx jest
+          --testPathPattern='src/__tests__/integration'
+          --reporters=default jest-junit
+          --forceExit
+          --ci
+      - echo "Integration tests complete."
+
+  post_build:
+    commands:
+      # Stop and remove the test container regardless of test outcome
+      - echo "Stopping test container..."
+      - docker stop poc1-app-test || true
+      - docker rm poc1-app-test  || true
+      - echo "Test stage complete."
+
+# Test reports — published to CodeBuild Test Report Group
+# A failed test case surfaces as a stage failure in CodePipeline.
+reports:
+  UnitTestReport:
+    files:
+      - 'junit.xml'
+    file-format: JUNITXML
+    discard-paths: yes
+
+  CoverageReport:
+    files:
+      - 'coverage/lcov.info'
+    file-format: CLOVERXML
+    discard-paths: yes
+
+artifacts:
+  files:
+    - imagedefinitions.json   # pass through to downstream deploy stages
+    - taskdef.json
+    - appspec.yml
+    - 'coverage/**/*'
+  discard-paths: no
+
+cache:
+  paths:
+    - '/root/.npm/**/*'
+    - node_modules/**/*

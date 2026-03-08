@@ -1,0 +1,573 @@
+# ---------------------------------------------------------------------------
+# PoC2 — azure-pipelines.yml
+# Full CI/CD pipeline: GitHub -> Build -> Test -> Manual Approval ->
+# Deploy Staging -> Deploy Production (blue/green via revision splitting)
+#
+# Equivalent to PoC1 AWS CodePipeline pipeline-stack.yaml + buildspec.yml
+# + testspec.yml combined into a single Azure Pipelines file.
+#
+# Prerequisites in Azure DevOps before running:
+#   1. Service Connection named "azure-service-connection" linked to your
+#      Azure subscription (Project Settings -> Service Connections)
+#   2. Service Connection named "github-service-connection" linked to GitHub
+#   3. Azure Key Vault named "poc2-keyvault" with secrets:
+#        sonar-token, test-db-url, prod-db-url, api-key
+#   4. Azure DevOps Environment named "poc2-production" with a required
+#      approval rule configured (Pipelines -> Environments)
+#   5. Azure Container Registry named "poc2acr" already provisioned
+#      (or deploy bicep/main.bicep first)
+# ---------------------------------------------------------------------------
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - '*.md'
+      - 'docs/**'
+
+pr:
+  branches:
+    include:
+      - main
+
+# ---------------------------------------------------------------------------
+# Global variables
+# ---------------------------------------------------------------------------
+variables:
+  # Azure Container Registry
+  acrName: 'poc2acr'
+  acrLoginServer: 'poc2acr.azurecr.io'
+  imageRepository: 'poc2-app'
+  containerPort: '3000'
+
+  # Azure Container Apps
+  resourceGroup: 'poc2-rg'
+  location: 'westeurope'
+  containerAppEnvName: 'poc2-env'
+  stagingAppName: 'poc2-staging'
+  prodAppName: 'poc2-prod'
+
+  # Build
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  # Tag image with the short commit SHA — equivalent to CODEBUILD_RESOLVED_SOURCE_VERSION
+  imageTag: $(Build.SourceVersion)
+  imageTagShort: $[substring(variables['Build.SourceVersion'], 0, 8)]
+
+  # SonarQube
+  sonarProjectKey: 'poc1-app'
+
+  # Azure service connections
+  azureServiceConnection: 'azure-service-connection'
+
+# ---------------------------------------------------------------------------
+# Stage 1 — Build
+# ---------------------------------------------------------------------------
+stages:
+
+- stage: Build
+  displayName: 'Build — Docker image & static analysis'
+  jobs:
+
+  - job: BuildAndPush
+    displayName: 'Docker Build, SonarQube, ECR Push'
+    pool:
+      vmImage: 'ubuntu-22.04'
+
+    steps:
+
+    # --- Fetch secrets from Azure Key Vault (no plaintext in YAML) ---
+    - task: AzureKeyVault@2
+      displayName: 'Load secrets from Key Vault'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        KeyVaultName: 'poc2-keyvault'
+        SecretsFilter: 'sonar-token,prod-db-url,api-key'
+        RunAsPreJob: true
+
+    # --- Pin Node.js to exact version ---
+    - task: NodeTool@0
+      displayName: 'Install Node.js 20.11.1'
+      inputs:
+        versionSpec: '20.11.1'
+
+    # --- Install dependencies (ci = exact versions from package-lock.json) ---
+    - script: npm ci --prefer-offline
+      displayName: 'npm ci'
+
+    # --- ESLint static analysis ---
+    - script: |
+        npm run lint -- --format junit --output-file reports/lint-results.xml || true
+      displayName: 'ESLint'
+
+    # --- Publish lint results ---
+    - task: PublishTestResults@2
+      displayName: 'Publish lint results'
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: 'reports/lint-results.xml'
+        testRunTitle: 'ESLint'
+      condition: always()
+
+    # --- SonarQube analysis (token from Key Vault) ---
+    - task: SonarCloudPrepare@2
+      displayName: 'SonarCloud — prepare'
+      inputs:
+        SonarCloud: 'sonarcloud-service-connection'
+        organization: 'your-sonar-org'
+        scannerMode: 'CLI'
+        configMode: 'manual'
+        cliProjectKey: $(sonarProjectKey)
+        cliSources: 'src'
+        extraProperties: |
+          sonar.exclusions=**/__tests__/**
+          sonar.javascript.lcov.reportPaths=coverage/lcov.info
+
+    - task: SonarCloudAnalyze@2
+      displayName: 'SonarCloud — analyse'
+
+    - task: SonarCloudPublish@2
+      displayName: 'SonarCloud — publish quality gate'
+      inputs:
+        pollingTimeoutSec: '300'
+
+    # --- Docker: log in to ACR ---
+    - task: Docker@2
+      displayName: 'ACR login'
+      inputs:
+        command: login
+        containerRegistry: 'acr-service-connection'
+
+    # --- Docker: build image with layer-cache optimisation ---
+    - task: Docker@2
+      displayName: 'Docker build'
+      inputs:
+        command: build
+        repository: $(acrLoginServer)/$(imageRepository)
+        dockerfile: $(dockerfilePath)
+        buildContext: $(Build.SourcesDirectory)
+        tags: |
+          $(imageTag)
+          latest
+        arguments: >
+          --cache-from $(acrLoginServer)/$(imageRepository):latest
+          --build-arg NODE_ENV=production
+          --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          --build-arg VCS_REF=$(Build.SourceVersion)
+
+    # --- Docker: push to ACR ---
+    - task: Docker@2
+      displayName: 'Docker push'
+      inputs:
+        command: push
+        repository: $(acrLoginServer)/$(imageRepository)
+        tags: |
+          $(imageTag)
+          latest
+
+    # --- Write image digest to a variable file for downstream stages ---
+    - script: |
+        IMAGE_URI="$(acrLoginServer)/$(imageRepository):$(imageTag)"
+        echo "##vso[task.setvariable variable=imageUri;isOutput=true]$IMAGE_URI"
+        echo "Image URI: $IMAGE_URI"
+      displayName: 'Export image URI'
+      name: SetImageUri
+
+    # --- Publish build artefact (image URI for downstream stages) ---
+    - script: |
+        mkdir -p $(Build.ArtifactStagingDirectory)
+        echo "$(acrLoginServer)/$(imageRepository):$(imageTag)" \
+          > $(Build.ArtifactStagingDirectory)/image-uri.txt
+      displayName: 'Write image URI artefact'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish build artefact'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'BuildArtifact'
+
+# ---------------------------------------------------------------------------
+# Stage 2 — Test
+# ---------------------------------------------------------------------------
+- stage: Test
+  displayName: 'Test — unit & integration'
+  dependsOn: Build
+  condition: succeeded()
+
+  jobs:
+
+  - job: UnitAndIntegrationTests
+    displayName: 'Jest unit + integration tests'
+    pool:
+      vmImage: 'ubuntu-22.04'
+
+    variables:
+      # Inherit image URI from Build stage
+      imageUri: $[ stageDependencies.Build.BuildAndPush.outputs['SetImageUri.imageUri'] ]
+
+    steps:
+
+    # --- Key Vault secrets for test-time database ---
+    - task: AzureKeyVault@2
+      displayName: 'Load test secrets from Key Vault'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        KeyVaultName: 'poc2-keyvault'
+        SecretsFilter: 'test-db-url'
+        RunAsPreJob: true
+
+    - task: NodeTool@0
+      displayName: 'Install Node.js 20.11.1'
+      inputs:
+        versionSpec: '20.11.1'
+
+    - script: npm ci --include=dev --prefer-offline
+      displayName: 'npm ci (with devDependencies)'
+
+    # --- ACR login to pull the built image ---
+    - task: Docker@2
+      displayName: 'ACR login'
+      inputs:
+        command: login
+        containerRegistry: 'acr-service-connection'
+
+    # --- Pull the exact image built in the Build stage ---
+    - script: docker pull $(imageUri)
+      displayName: 'Pull image from ACR'
+
+    # --- Start application container for integration tests ---
+    - script: |
+        docker run -d \
+          --name poc2-app-test \
+          -p 3000:3000 \
+          -e NODE_ENV=test \
+          -e DATABASE_URL=$(test-db-url) \
+          $(imageUri)
+
+        echo "Waiting for container health check..."
+        for i in $(seq 1 30); do
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            http://localhost:3000/health || true)
+          if [ "$STATUS" = "200" ]; then
+            echo "Container healthy after $i seconds."
+            break
+          fi
+          echo "  Attempt $i: status=$STATUS — retrying in 2s..."
+          sleep 2
+        done
+
+        if [ "$STATUS" != "200" ]; then
+          echo "ERROR: Container did not become healthy."
+          docker logs poc2-app-test
+          exit 1
+        fi
+      displayName: 'Start container & wait for /health'
+
+    # --- Unit tests ---
+    - script: |
+        npx jest \
+          --testPathPattern='src/__tests__/unit' \
+          --coverage \
+          --coverageReporters=text lcov \
+          --reporters=default jest-junit \
+          --forceExit \
+          --ci
+      displayName: 'Jest unit tests'
+      env:
+        JEST_JUNIT_OUTPUT_DIR: '$(System.DefaultWorkingDirectory)/test-results'
+        JEST_JUNIT_OUTPUT_NAME: 'unit-results.xml'
+
+    # --- Integration tests ---
+    - script: |
+        npx jest \
+          --testPathPattern='src/__tests__/integration' \
+          --reporters=default jest-junit \
+          --forceExit \
+          --ci
+      displayName: 'Jest integration tests'
+      env:
+        TEST_BASE_URL: 'http://localhost:3000'
+        JEST_JUNIT_OUTPUT_DIR: '$(System.DefaultWorkingDirectory)/test-results'
+        JEST_JUNIT_OUTPUT_NAME: 'integration-results.xml'
+
+    # --- Stop test container ---
+    - script: |
+        docker stop poc2-app-test || true
+        docker rm poc2-app-test   || true
+      displayName: 'Stop test container'
+      condition: always()
+
+    # --- Publish test results ---
+    - task: PublishTestResults@2
+      displayName: 'Publish unit test results'
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: 'test-results/unit-results.xml'
+        testRunTitle: 'Unit Tests'
+      condition: always()
+
+    - task: PublishTestResults@2
+      displayName: 'Publish integration test results'
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: 'test-results/integration-results.xml'
+        testRunTitle: 'Integration Tests'
+      condition: always()
+
+    # --- Publish code coverage ---
+    - task: PublishCodeCoverageResults@2
+      displayName: 'Publish code coverage'
+      inputs:
+        summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage/lcov.info'
+      condition: always()
+
+# ---------------------------------------------------------------------------
+# Stage 3 — Deploy Staging
+# ---------------------------------------------------------------------------
+- stage: DeployStaging
+  displayName: 'Deploy — Staging'
+  dependsOn: Test
+  condition: succeeded()
+
+  jobs:
+
+  - deployment: DeployToStaging
+    displayName: 'Deploy to Azure Container Apps (Staging)'
+    pool:
+      vmImage: 'ubuntu-22.04'
+    # Azure DevOps Environment — no approval required for staging
+    environment: 'poc2-staging'
+
+    variables:
+      imageUri: $[ stageDependencies.Build.BuildAndPush.outputs['SetImageUri.imageUri'] ]
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          - task: AzureCLI@2
+            displayName: 'Deploy new revision to Staging Container App'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az containerapp update \
+                  --name $(stagingAppName) \
+                  --resource-group $(resourceGroup) \
+                  --image $(imageUri) \
+                  --set-env-vars \
+                      NODE_ENV=production \
+                      PORT=$(containerPort)
+
+          - task: AzureCLI@2
+            displayName: 'Verify staging /health endpoint'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                FQDN=$(az containerapp show \
+                  --name $(stagingAppName) \
+                  --resource-group $(resourceGroup) \
+                  --query properties.configuration.ingress.fqdn \
+                  --output tsv)
+
+                echo "Staging URL: https://$FQDN/health"
+
+                for i in $(seq 1 10); do
+                  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                    https://$FQDN/health || true)
+                  if [ "$STATUS" = "200" ]; then
+                    echo "Staging health check passed."
+                    exit 0
+                  fi
+                  echo "Attempt $i: status=$STATUS — retrying..."
+                  sleep 5
+                done
+
+                echo "ERROR: Staging health check failed."
+                exit 1
+
+# ---------------------------------------------------------------------------
+# Stage 4 — Manual Approval gate
+# (Configured in Azure DevOps: Pipelines -> Environments -> poc2-production
+#  -> Approvals and checks -> Add approval)
+# This stage will pause here and send an email to the approver.
+# Equivalent to the CodePipeline Manual Approval action + SNS notification.
+# ---------------------------------------------------------------------------
+- stage: Approval
+  displayName: 'Approval — promote to production'
+  dependsOn: DeployStaging
+  condition: succeeded()
+
+  jobs:
+
+  - job: WaitForApproval
+    displayName: 'Awaiting manual approval'
+    pool: server   # agentless job — no compute cost while waiting
+    timeoutInMinutes: 10080   # 7 days, matching CodePipeline token expiry
+    steps:
+
+    - task: ManualValidation@1
+      displayName: 'Manual approval gate'
+      inputs:
+        notifyUsers: |
+          approver@yourorganisation.com
+        instructions: |
+          Please review the staging deployment before approving promotion to production.
+          Commit: $(Build.SourceVersion)
+          Image:  $(acrLoginServer)/$(imageRepository):$(imageTag)
+          Staging URL: https://poc2-staging.<your-env-domain>/health
+        onTimeout: reject
+
+# ---------------------------------------------------------------------------
+# Stage 5 — Deploy Production (blue/green via revision traffic splitting)
+# Equivalent to CodeDeploy ECS blue/green in PoC1.
+# ---------------------------------------------------------------------------
+- stage: DeployProduction
+  displayName: 'Deploy — Production (blue/green)'
+  dependsOn: Approval
+  condition: succeeded()
+
+  jobs:
+
+  - deployment: DeployToProduction
+    displayName: 'Blue/Green deploy to Production Container App'
+    pool:
+      vmImage: 'ubuntu-22.04'
+    # Azure DevOps Environment — approval is enforced here at the
+    # environment level in addition to the ManualValidation task above.
+    environment: 'poc2-production'
+
+    variables:
+      imageUri: $[ stageDependencies.Build.BuildAndPush.outputs['SetImageUri.imageUri'] ]
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          # Step 1: Deploy new revision but send 0% traffic (green)
+          - task: AzureCLI@2
+            displayName: 'Create green revision (0% traffic)'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                # Generate a unique revision suffix from the short commit SHA
+                REVISION_SUFFIX="$(Build.SourceVersion)"
+                REVISION_SUFFIX="${REVISION_SUFFIX:0:8}"
+
+                az containerapp update \
+                  --name $(prodAppName) \
+                  --resource-group $(resourceGroup) \
+                  --image $(imageUri) \
+                  --revision-suffix $REVISION_SUFFIX \
+                  --set-env-vars \
+                      NODE_ENV=production \
+                      PORT=$(containerPort) \
+                  --traffic-weight \
+                      latestRevision=false
+
+                echo "##vso[task.setvariable variable=newRevisionSuffix]$REVISION_SUFFIX"
+
+          # Step 2: Health-check the green revision via its direct revision URL
+          - task: AzureCLI@2
+            displayName: 'Health-check green revision'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                FQDN=$(az containerapp revision show \
+                  --name $(prodAppName) \
+                  --resource-group $(resourceGroup) \
+                  --revision "$(prodAppName)--$(newRevisionSuffix)" \
+                  --query properties.fqdn \
+                  --output tsv)
+
+                echo "Green revision URL: https://$FQDN/health"
+
+                for i in $(seq 1 15); do
+                  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                    https://$FQDN/health || true)
+                  if [ "$STATUS" = "200" ]; then
+                    echo "Green revision healthy."
+                    exit 0
+                  fi
+                  echo "Attempt $i: status=$STATUS — retrying..."
+                  sleep 5
+                done
+
+                echo "ERROR: Green revision health check failed — aborting traffic shift."
+                exit 1
+
+          # Step 3: Shift 100% traffic to the new (green) revision
+          - task: AzureCLI@2
+            displayName: 'Shift 100% traffic to green revision'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az containerapp ingress traffic set \
+                  --name $(prodAppName) \
+                  --resource-group $(resourceGroup) \
+                  --revision-weight \
+                      "$(prodAppName)--$(newRevisionSuffix)=100"
+
+                echo "Traffic fully shifted to revision $(newRevisionSuffix)."
+
+          # Step 4: Deactivate the old (blue) revision
+          - task: AzureCLI@2
+            displayName: 'Deactivate old (blue) revision'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                # List all revisions except the new one and deactivate them
+                OLD_REVISIONS=$(az containerapp revision list \
+                  --name $(prodAppName) \
+                  --resource-group $(resourceGroup) \
+                  --query "[?name!='$(prodAppName)--$(newRevisionSuffix)' \
+                            && properties.active==true].name" \
+                  --output tsv)
+
+                for REV in $OLD_REVISIONS; do
+                  echo "Deactivating revision: $REV"
+                  az containerapp revision deactivate \
+                    --name $(prodAppName) \
+                    --resource-group $(resourceGroup) \
+                    --revision $REV
+                done
+
+                echo "Blue revision(s) deactivated."
+
+          # Step 5: Final production health check
+          - task: AzureCLI@2
+            displayName: 'Final production health check'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                FQDN=$(az containerapp show \
+                  --name $(prodAppName) \
+                  --resource-group $(resourceGroup) \
+                  --query properties.configuration.ingress.fqdn \
+                  --output tsv)
+
+                STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                  https://$FQDN/health || true)
+
+                if [ "$STATUS" = "200" ]; then
+                  echo "Production deployment successful. URL: https://$FQDN"
+                else
+                  echo "ERROR: Production health check returned $STATUS"
+                  exit 1
+                fi

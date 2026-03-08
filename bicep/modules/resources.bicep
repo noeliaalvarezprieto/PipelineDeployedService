@@ -253,7 +253,7 @@ resource stagingApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: appName
-          image: '${acr.properties.loginServer}/${appName}:${initialImageTag}'
+          image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'
@@ -365,7 +365,7 @@ resource prodApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: appName
-          image: '${acr.properties.loginServer}/${appName}:${initialImageTag}'
+          image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'

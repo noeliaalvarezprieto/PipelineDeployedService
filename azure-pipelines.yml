@@ -145,14 +145,14 @@ stages:
       displayName: 'Docker build'
       inputs:
         command: build
-        repository: $(acrLoginServer)/$(imageRepository)
+        repository: $(imageRepository)
+        containerRegistry: 'acr-service-connection'
         dockerfile: $(dockerfilePath)
         buildContext: $(Build.SourcesDirectory)
         tags: |
           $(imageTag)
           latest
         arguments: >
-          --cache-from $(acrLoginServer)/$(imageRepository):latest
           --build-arg NODE_ENV=production
           --build-arg VCS_REF=$(Build.SourceVersion)
 
@@ -161,7 +161,8 @@ stages:
       displayName: 'Docker push'
       inputs:
         command: push
-        repository: $(acrLoginServer)/$(imageRepository)
+        repository: $(imageRepository)
+        containerRegistry: 'acr-service-connection'
         tags: |
           $(imageTag)
           latest

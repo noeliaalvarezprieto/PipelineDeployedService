@@ -167,18 +167,17 @@ stages:
           latest
 
     # --- Write image digest to a variable file for downstream stages ---
-    - script: |
-        IMAGE_URI="$(acrLoginServer)/$(imageRepository):$(imageTag)"
-        echo "##vso[task.setvariable variable=imageUri;isOutput=true]$IMAGE_URI"
-        echo "Image URI: $IMAGE_URI"
+    - powershell: |
+        $IMAGE_URI = "$(acrLoginServer)/$(imageRepository):$(imageTag)"
+        Write-Host "##vso[task.setvariable variable=imageUri;isOutput=true]$IMAGE_URI"
+        Write-Host "Image URI: $IMAGE_URI"
       displayName: 'Export image URI'
       name: SetImageUri
 
-    # --- Publish build artefact (image URI for downstream stages) ---
-    - script: |
-        mkdir -p $(Build.ArtifactStagingDirectory)
-        echo "$(acrLoginServer)/$(imageRepository):$(imageTag)" \
-          > $(Build.ArtifactStagingDirectory)/image-uri.txt
+   # --- Publish build artefact (image URI for downstream stages) ---
+    - powershell: |
+        New-Item -ItemType Directory -Force -Path "$(Build.ArtifactStagingDirectory)" | Out-Null
+        "$(acrLoginServer)/$(imageRepository):$(imageTag)" | Out-File -FilePath "$(Build.ArtifactStagingDirectory)\image-uri.txt" -Encoding utf8
       displayName: 'Write image URI artefact'
 
     - task: PublishBuildArtifacts@1

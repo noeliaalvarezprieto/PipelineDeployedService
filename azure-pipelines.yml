@@ -100,6 +100,7 @@ stages:
     - script: |
         npm run lint -- --format junit --output-file reports/lint-results.xml || true
       displayName: 'ESLint'
+      
 
     # --- Publish lint results ---
     - task: PublishTestResults@2
@@ -111,7 +112,7 @@ stages:
       condition: always()
 
     # --- SonarQube analysis (token from Key Vault) ---
-    - task: SonarCloudPrepare@2
+    - task: SonarCloudPrepare@1
       displayName: 'SonarCloud — prepare'
       inputs:
         SonarCloud: 'sonarcloud-service-connection'
@@ -124,10 +125,10 @@ stages:
           sonar.exclusions=**/__tests__/**
           sonar.javascript.lcov.reportPaths=coverage/lcov.info
 
-    - task: SonarCloudAnalyze@2
+    - task: SonarCloudAnalyze@1
       displayName: 'SonarCloud — analyse'
 
-    - task: SonarCloudPublish@2
+    - task: SonarCloudPublish@1
       displayName: 'SonarCloud — publish quality gate'
       inputs:
         pollingTimeoutSec: '300'

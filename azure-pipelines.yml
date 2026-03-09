@@ -487,24 +487,4 @@ stages:
                 $fqdn = az containerapp show --name $(prodAppName) --resource-group $(resourceGroup) --query properties.configuration.ingress.fqdn --output tsv
                 try { $code = (Invoke-WebRequest -Uri "https://$fqdn/health" -UseBasicParsing -TimeoutSec 5).StatusCode } catch { $code = 0 }
                 if ($code -eq 200) { Write-Host "Production deployment successful. URL: https://$fqdn" } else { exit 1 }
-            displayName: 'Final production health check'
-            inputs:
-              azureSubscription: $(azureServiceConnection)
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                FQDN=$(az containerapp show \
-                  --name $(prodAppName) \
-                  --resource-group $(resourceGroup) \
-                  --query properties.configuration.ingress.fqdn \
-                  --output tsv)
-
-                STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-                  https://$FQDN/health || true)
-
-                if [ "$STATUS" = "200" ]; then
-                  echo "Production deployment successful. URL: https://$FQDN"
-                else
-                  echo "ERROR: Production health check returned $STATUS"
-                  exit 1
-                fi
+            

@@ -346,45 +346,31 @@ stages:
             displayName: 'Deploy new revision to Staging Container App'
             inputs:
               azureSubscription: $(azureServiceConnection)
-              scriptType: bash
+              scriptType: ps
               scriptLocation: inlineScript
               inlineScript: |
-                az containerapp update \
-                  --name $(stagingAppName) \
-                  --resource-group $(resourceGroup) \
-                  --image $(imageUri) \
-                  --set-env-vars \
-                      NODE_ENV=production \
-                      PORT=$(containerPort)
+                az containerapp update `
+                  --name $(stagingAppName) `
+                  --resource-group $(resourceGroup) `
+                  --image $(acrLoginServer)/$(imageRepository):latest `
+                  --set-env-vars NODE_ENV=production PORT=$(containerPort)
 
           - task: AzureCLI@2
             displayName: 'Verify staging /health endpoint'
             inputs:
               azureSubscription: $(azureServiceConnection)
-              scriptType: bash
+              scriptType: ps
               scriptLocation: inlineScript
               inlineScript: |
-                FQDN=$(az containerapp show \
-                  --name $(stagingAppName) \
-                  --resource-group $(resourceGroup) \
-                  --query properties.configuration.ingress.fqdn \
-                  --output tsv)
-
-                echo "Staging URL: https://$FQDN/health"
-
-                for i in $(seq 1 10); do
-                  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-                    https://$FQDN/health || true)
-                  if [ "$STATUS" = "200" ]; then
-                    echo "Staging health check passed."
-                    exit 0
-                  fi
-                  echo "Attempt $i: status=$STATUS — retrying..."
-                  sleep 5
-                done
-
-                echo "ERROR: Staging health check failed."
-                exit 1
+                $fqdn = az containerapp show --name $(stagingAppName) --resource-group $(resourceGroup) --query properties.configuration.ingress.fqdn --output tsv
+                Write-Host "Staging URL: https://$fqdn/health"
+                for ($i = 1; $i -le 10; $i++) {
+                  try { $code = (Invoke-WebRequest -Uri "https://$fqdn/health" -UseBasicParsing -TimeoutSec 5).StatusCode } catch { $code = 0 }
+                  if ($code -eq 200) { Write-Host "Health check passed."; exit 0 }
+                  Write-Host "Attempt $i`: status=$code - retrying..."
+                  Start-Sleep -Seconds 5
+                }
+                Write-Host "ERROR: Staging health check failed."; exit 1
 
 # ---------------------------------------------------------------------------
 # Stage 4 — Manual Approval gate

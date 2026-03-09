@@ -154,7 +154,6 @@ stages:
         arguments: >
           --cache-from $(acrLoginServer)/$(imageRepository):latest
           --build-arg NODE_ENV=production
-          --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           --build-arg VCS_REF=$(Build.SourceVersion)
 
     # --- Docker: push to ACR ---

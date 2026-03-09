@@ -56,7 +56,7 @@ variables:
   imageTagShort: $[substring(variables['Build.SourceVersion'], 0, 8)]
 
   # SonarQube
-  sonarProjectKey: 'poc1-app'
+  sonarProjectKey: 'noeliaalvarezprieto_PipelineDeployedService'
 
   # Azure service connections
   azureServiceConnection: 'azure-service-connection'

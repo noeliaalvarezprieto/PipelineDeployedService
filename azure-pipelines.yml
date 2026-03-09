@@ -73,7 +73,7 @@ stages:
   - job: BuildAndPush
     displayName: 'Docker Build, SonarQube, ECR Push'
     pool:
-      vmImage: 'ubuntu-22.04'
+      name: 'self-hosted-pool'
 
     steps:
 
@@ -201,7 +201,7 @@ stages:
   - job: UnitAndIntegrationTests
     displayName: 'Jest unit + integration tests'
     pool:
-      vmImage: 'ubuntu-22.04'
+      name: 'self-hosted-pool'
 
     variables:
       # Inherit image URI from Build stage
@@ -336,7 +336,7 @@ stages:
   - deployment: DeployToStaging
     displayName: 'Deploy to Azure Container Apps (Staging)'
     pool:
-      vmImage: 'ubuntu-22.04'
+      name: 'self-hosted-pool'
     # Azure DevOps Environment — no approval required for staging
     environment: 'poc2-staging'
 
@@ -438,7 +438,7 @@ stages:
   - deployment: DeployToProduction
     displayName: 'Blue/Green deploy to Production Container App'
     pool:
-      vmImage: 'ubuntu-22.04'
+      name: 'self-hosted-pool'
     # Azure DevOps Environment — approval is enforced here at the
     # environment level in addition to the ManualValidation task above.
     environment: 'poc2-production'

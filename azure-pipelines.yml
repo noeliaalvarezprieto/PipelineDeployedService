@@ -231,36 +231,38 @@ stages:
         command: login
         containerRegistry: 'acr-service-connection'
 
-    # --- Pull the exact image built in the Build stage ---
-    - script: docker pull $(imageUri)
+  # --- Pull the exact image built in the Build stage ---
+    - script: docker pull $(acrLoginServer)/$(imageRepository):latest
       displayName: 'Pull image from ACR'
 
-    # --- Start application container for integration tests ---
-    - script: |
-        docker run -d \
-          --name poc2-app-test \
-          -p 3000:3000 \
-          -e NODE_ENV=test \
-          -e DATABASE_URL=$(test-db-url) \
-          $(imageUri)
+   # --- Start application container for integration tests ---
+    - powershell: |
+        docker run -d `
+          --name poc2-app-test `
+          -p 3000:3000 `
+          -e NODE_ENV=test `
+          -e DATABASE_URL=$(test-db-url) `
+          $(acrLoginServer)/$(imageRepository):latest
 
-        echo "Waiting for container health check..."
-        for i in $(seq 1 30); do
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            http://localhost:3000/health || true)
-          if [ "$STATUS" = "200" ]; then
-            echo "Container healthy after $i seconds."
+        Write-Host "Waiting for container health check..."
+        $healthy = $false
+        for ($i = 1; $i -le 30; $i++) {
+          try {
+            $status = (Invoke-WebRequest -Uri "http://localhost:3000/health" -UseBasicParsing -TimeoutSec 2).StatusCode
+          } catch { $status = 0 }
+          if ($status -eq 200) {
+            Write-Host "Container healthy after $i seconds."
+            $healthy = $true
             break
-          fi
-          echo "  Attempt $i: status=$STATUS — retrying in 2s..."
-          sleep 2
-        done
-
-        if [ "$STATUS" != "200" ]; then
-          echo "ERROR: Container did not become healthy."
+          }
+          Write-Host "  Attempt $i: status=$status — retrying in 2s..."
+          Start-Sleep -Seconds 2
+        }
+        if (-not $healthy) {
+          Write-Host "ERROR: Container did not become healthy."
           docker logs poc2-app-test
           exit 1
-        fi
+        }
       displayName: 'Start container & wait for /health'
 
     # --- Unit tests ---
@@ -290,10 +292,9 @@ stages:
         JEST_JUNIT_OUTPUT_DIR: '$(System.DefaultWorkingDirectory)/test-results'
         JEST_JUNIT_OUTPUT_NAME: 'integration-results.xml'
 
-    # --- Stop test container ---
-    - script: |
-        docker stop poc2-app-test || true
-        docker rm poc2-app-test   || true
+    - powershell: |
+        docker stop poc2-app-test
+        docker rm poc2-app-test
       displayName: 'Stop test container'
       condition: always()
 

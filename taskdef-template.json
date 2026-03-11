@@ -9,7 +9,7 @@
   "containerDefinitions": [
     {
       "name": "poc1-app",
-      "image": "160823835871.dkr.ecr.eu-north-1.amazonaws.com/poc1-app:IMAGE_TAG",
+      "image": "160823835871.dkr.ecr.eu-west-1.amazonaws.com/poc1-app:IMAGE_TAG",
       "portMappings": [
         {
           "containerPort": 3000,
@@ -30,11 +30,11 @@
       "secrets": [
         {
           "name": "DATABASE_URL",
-          "valueFrom": "arn:aws:secretsmanager:eu-north-1:160823835871:secret:poc1-app/database-url"
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:160823835871:secret:poc1-app/database-url"
         },
         {
           "name": "API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:eu-north-1:160823835871:secret:poc1-app/api-key"
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:160823835871:secret:poc1-app/api-key"
         }
       ],
       "healthCheck": {
@@ -48,7 +48,7 @@
         "logDriver": "awslogs",
         "options": {
           "awslogs-group": "/ecs/poc1-app",
-          "awslogs-region": "eu-north-1",
+          "awslogs-region": "eu-west-1",
           "awslogs-stream-prefix": "ecs"
         }
       }

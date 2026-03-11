@@ -43,7 +43,7 @@ phases:
       # --- Static analysis with SonarQube (non-blocking scan; fail on gate) ---
       - echo "Running SonarQube static analysis..."
       - npx sonar-scanner
-          -Dsonar.projectKey=poc1-app
+          -Dsonar.projectKey=noeliaalvarezprieto_PipelineDeployedService
           -Dsonar.sources=src
           -Dsonar.host.url=https://sonarcloud.io
           -Dsonar.login=$SONAR_TOKEN

@@ -308,22 +308,6 @@ Resources:
                   - secretsmanager:GetSecretValue
                 Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${AppName}/*'
 
-  # =========================================================================
-  # IAM — CodeDeploy service role
-  # =========================================================================
-  CodeDeployRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub '${AppName}-codedeploy-role'
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: codedeploy.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS
 
   # =========================================================================
   # Security Groups
@@ -470,66 +454,29 @@ Resources:
         MinimumHealthyPercent: 100
 
   ProdService:
-    Type: AWS::ECS::Service
-    DependsOn: ProdListener
-    Properties:
-      ServiceName: !Ref ProdServiceName
-      Cluster: !Ref ECSCluster
-      TaskDefinition: !Ref TaskDefinition
-      DesiredCount: 2
-      LaunchType: FARGATE
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          Subnets: !Ref SubnetIds
-          SecurityGroups:
-            - !Ref ECSSecurityGroup
-          AssignPublicIp: ENABLED
-      LoadBalancers:
-        - ContainerName: !Ref AppName
-          ContainerPort: !Ref ContainerPort
-          TargetGroupArn: !Ref ProdTargetGroupBlue
-      DeploymentController:
-        Type: CODE_DEPLOY
+  Type: AWS::ECS::Service
+  DependsOn: ProdListener
+  Properties:
+    ServiceName: !Ref ProdServiceName
+    Cluster: !Ref ECSCluster
+    TaskDefinition: !Ref TaskDefinition
+    DesiredCount: 2
+    LaunchType: FARGATE
+    NetworkConfiguration:
+      AwsvpcConfiguration:
+        Subnets: !Ref SubnetIds
+        SecurityGroups:
+          - !Ref ECSSecurityGroup
+        AssignPublicIp: ENABLED
+    LoadBalancers:
+      - ContainerName: !Ref AppName
+        ContainerPort: !Ref ContainerPort
+        TargetGroupArn: !Ref ProdTargetGroupBlue
+    DeploymentConfiguration:
+      MaximumPercent: 200
+      MinimumHealthyPercent: 100
 
-  # =========================================================================
-  # CodeDeploy — Application and Deployment Group (ECS Blue/Green)
-  # =========================================================================
-  CodeDeployApplication:
-    Type: AWS::CodeDeploy::Application
-    Properties:
-      ApplicationName: !Sub '${AppName}-codedeploy'
-      ComputePlatform: ECS
-
-  CodeDeployDeploymentGroup:
-    Type: AWS::CodeDeploy::DeploymentGroup
-    DependsOn: ProdService
-    Properties:
-      ApplicationName: !Ref CodeDeployApplication
-      DeploymentGroupName: !Sub '${AppName}-prod-dg'
-      ServiceRoleArn: !GetAtt CodeDeployRole.Arn
-      DeploymentConfigName: CodeDeployDefault.ECSAllAtOnce
-      DeploymentStyle:
-        DeploymentType: BLUE_GREEN
-        DeploymentOption: WITH_TRAFFIC_CONTROL
-      BlueGreenDeploymentConfiguration:
-        DeploymentReadyOption:
-          ActionOnTimeout: CONTINUE_DEPLOYMENT
-          WaitTimeInMinutes: 0
-        TerminateBlueInstancesOnDeploymentSuccess:
-          Action: TERMINATE
-          TerminationWaitTimeInMinutes: 5
-      ECSServices:
-        - ClusterName: !Ref ECSCluster
-          ServiceName: !Ref ProdServiceName
-      LoadBalancerInfo:
-        TargetGroupPairInfoList:
-          - ProdTrafficRoute:
-              ListenerArns:
-                - !Ref ProdListener
-            TargetGroups:
-              - Name: !GetAtt ProdTargetGroupBlue.TargetGroupName
-              - Name: !GetAtt ProdTargetGroupGreen.TargetGroupName
-
+ 
   # =========================================================================
   # CodeBuild — Build Project
   # =========================================================================
@@ -704,25 +651,20 @@ Resources:
 
         # ---- Stage 6: Deploy Production (Blue/Green) ----
         - Name: DeployProd
-          Actions:
-            - Name: BlueGreenDeployToProd
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Provider: CodeDeployToECS
-                Version: '1'
-              Configuration:
-                ApplicationName: !Ref CodeDeployApplication
-                DeploymentGroupName: !Ref CodeDeployDeploymentGroup
-                TaskDefinitionTemplateArtifact: BuildArtifact
-                TaskDefinitionTemplatePath: taskdef.json
-                AppSpecTemplateArtifact: BuildArtifact
-                AppSpecTemplatePath: appspec.yml
-                Image1ArtifactName: BuildArtifact
-                Image1ContainerName: IMAGE1_NAME
-              InputArtifacts:
-                - Name: BuildArtifact
-              RunOrder: 1
+  Actions:
+    - Name: DeployToProd
+      ActionTypeId:
+        Category: Deploy
+        Owner: AWS
+        Provider: ECS
+        Version: '1'
+      Configuration:
+        ClusterName: !Ref ECSCluster
+        ServiceName: !Ref ProdServiceName
+        FileName: imagedefinitions.json
+      InputArtifacts:
+        - Name: BuildArtifact
+      RunOrder: 1
 
   # =========================================================================
   # CloudWatch Alarm — pipeline failure

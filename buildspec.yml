@@ -72,22 +72,14 @@ phases:
 
   post_build:
     commands:
-      # --- imagedefinitions.json (used by ECS rolling-update deploy action) ---
+      - echo "Generating imagedefinitions.json for ECS..."
       - printf '[{"name":"%s","imageUri":"%s"}]' poc1-app $IMAGE_URI > imagedefinitions.json
-
-      # --- taskdef.json (used by CodeDeployToECS blue/green deploy action) ---
-      # Replace IMAGE1_NAME placeholder with the resolved image URI at deploy time.
-      - cat taskdef-template.json |
-          sed "s|<IMAGE1_NAME>|$IMAGE_URI|g" > taskdef.json
-
       - echo "Build artefacts written."
       - echo "Build complete — image $IMAGE_URI"
 
 artifacts:
   files:
     - imagedefinitions.json   # ECS rolling-update input
-    - taskdef.json            # CodeDeploy blue/green input
-    - appspec.yml             # CodeDeploy AppSpec
     - '**/*'                  # full source tree for downstream test stage
   discard-paths: no
   secondary-artifacts:

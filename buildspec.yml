@@ -20,7 +20,7 @@ phases:
   install:
     runtime-versions:
       nodejs: 20
-      docker: 20
+      # docker: 20  ❌ REMOVED - Docker is not a runtime version
     commands:
       # Pin npm to an exact version to avoid the Fuzzy Version anti-pattern
       # identified by Vassallo et al. (2020).
@@ -45,7 +45,7 @@ phases:
       - npx sonar-scanner
           -Dsonar.projectKey=noeliaalvarezprieto_PipelineDeployedService
           -Dsonar.sources=src
-          -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.host.url=https://sonarcloud.io 
           -Dsonar.login=$SONAR_TOKEN
           -Dsonar.qualitygate.wait=true
       - echo "Static analysis complete."
@@ -100,4 +100,4 @@ cache:
   # Cache node_modules and Docker layer cache between builds
   paths:
     - '/root/.npm/**/*'
-    - node_modules/**/*
+    - node_modules/**/*'

@@ -18,7 +18,8 @@ phases:
       nodejs: 20
     commands:
       - npm install -g npm@10.5.2
-      - npm ci --prefer-offline
+      - npm ci 
+      - npm install --save-dev jest
 
   pre_build:
     commands:

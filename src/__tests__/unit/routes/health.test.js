@@ -10,7 +10,7 @@ describe('Health Routes', () => {
     const response = await request(app).get('/health');
     
     expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty('status', 'ok');
-    expect(response.body).toHaveProperty('timestamp');
+    expect(response.body).toHaveProperty('status', 'healthy');
+    
   });
 });

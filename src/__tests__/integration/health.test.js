@@ -1,5 +1,5 @@
 const request = require('supertest');
-const app = require('../../app');  // Importar la app, no el servidor
+const app = require('../../app');
 
 describe('GET /health', () => {
   test('should return 200 and healthy status', async () => {

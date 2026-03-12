@@ -6,13 +6,9 @@ version: 0.2
 # ---------------------------------------------------------------------------
 
 env:
-  # All secrets are resolved at runtime from Secrets Manager — no plaintext
-  # credentials appear anywhere in this file (addresses K8 / SC7).
   secrets-manager:
     SONAR_TOKEN: poc1-app/sonar:token
   variables:
-    # ECR_REPO_URI and AWS_DEFAULT_REGION are injected by CloudFormation
-    # as CodeBuild environment variables — no hard-coding required.
     NODE_ENV: production
 
 phases:
@@ -20,10 +16,7 @@ phases:
   install:
     runtime-versions:
       nodejs: 20
-      # docker: 20  ❌ REMOVED - Docker is not a runtime version
     commands:
-      # Pin npm to an exact version to avoid the Fuzzy Version anti-pattern
-      # identified by Vassallo et al. (2020).
       - npm install -g npm@10.5.2
       - npm ci --prefer-offline
 
@@ -34,26 +27,20 @@ phases:
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION |
           docker login --username AWS --password-stdin $ECR_REPO_URI
 
-      # --- Tag image with the resolved commit SHA (satisfies FR3) ---
+      # --- Tag image ---
       - COMMIT_SHA=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-8)
       - IMAGE_URI="$ECR_REPO_URI:$COMMIT_SHA"
       - IMAGE_LATEST="$ECR_REPO_URI:latest"
       - echo "Image will be tagged $IMAGE_URI"
 
-      # --- Static analysis with SonarQube (non-blocking scan; fail on gate) ---
-      - echo "Running SonarQube static analysis..."
-      - npx sonar-scanner
-          -Dsonar.projectKey=noeliaalvarezprieto_PipelineDeployedService
-          -Dsonar.organization=noeliaalvarezprieto
-          -Dsonar.sources=src
-          -Dsonar.host.url=https://sonarcloud.io 
-          -Dsonar.login=$SONAR_TOKEN
-          -Dsonar.qualitygate.wait=true
-      - echo "Static analysis complete."
-
   build:
     commands:
-      # Build Docker image — layer order optimised for cache efficiency
+      # --- Run tests with coverage (GENERA coverage/lcov.info) ---
+      - echo "Running tests with coverage..."
+      - npm test
+      - echo "Tests completed. Coverage report generated."
+
+      # --- Build Docker image ---
       - echo "Building Docker image..."
       - docker build
           --cache-from $IMAGE_LATEST
@@ -65,7 +52,7 @@ phases:
           .
       - echo "Docker build complete."
 
-      # Push both commit-SHA tag and :latest to ECR
+      # --- Push to ECR ---
       - echo "Pushing image to ECR..."
       - docker push $IMAGE_URI
       - docker push $IMAGE_LATEST
@@ -73,6 +60,22 @@ phases:
 
   post_build:
     commands:
+      # --- Static analysis with SonarQube (DESPUÉS de tests) ---
+      - echo "Running SonarQube static analysis..."
+      - npx sonar-scanner
+          -Dsonar.projectKey=noeliaalvarezprieto_PipelineDeployedService
+          -Dsonar.organization=noeliaalvarezprieto
+          -Dsonar.sources=src
+          -Dsonar.exclusions=src/__tests__/**,**/node_modules/**,coverage/**,reports/**,src/index.js
+          -Dsonar.tests=src/__tests__
+          -Dsonar.test.inclusions=src/__tests__/**/*.test.js
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+          -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.login=$SONAR_TOKEN
+          -Dsonar.qualitygate.wait=true
+      - echo "Static analysis complete."
+
+      # --- Generate imagedefinitions.json ---
       - echo "Generating imagedefinitions.json for ECS..."
       - printf '[{"name":"%s","imageUri":"%s"}]' poc1-app $IMAGE_URI > imagedefinitions.json
       - echo "Build artefacts written."
@@ -80,17 +83,11 @@ phases:
 
 artifacts:
   files:
-    - imagedefinitions.json   # ECS rolling-update input
-    - '**/*'                  # full source tree for downstream test stage
+    - imagedefinitions.json
+    - '**/*'
   discard-paths: no
-  secondary-artifacts:
-    BuildReport:
-      files:
-        - imagedefinitions.json
-        - taskdef.json
 
 reports:
-  # CodeBuild Test Report Group — build-time lint results (optional)
   BuildLintReport:
     files:
       - 'reports/lint-results.xml'
@@ -98,7 +95,6 @@ reports:
     discard-paths: yes
 
 cache:
-  # Cache node_modules and Docker layer cache between builds
   paths:
     - '/root/.npm/**/*'
     - node_modules/**/*'

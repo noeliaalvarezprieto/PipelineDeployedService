@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   PoC1 - AWS CodePipeline CI/CD Stack
   Full pipeline: GitHub -> CodeBuild (Build) -> CodeBuild (Test) ->
-  Manual Approval -> ECS Fargate Staging -> ECS Fargate Blue/Green Production
+  Manual Approval -> ECS Fargate Production (rolling update)
 
 # ---------------------------------------------------------------------------
 # Parameters
@@ -44,12 +44,6 @@ Parameters:
     Type: String
     Default: poc1-cluster
 
-  # Staging service
-  StagingServiceName:
-    Type: String
-    Default: poc1-staging-service
-
-  # Production service (blue/green managed by CodeDeploy)
   ProdServiceName:
     Type: String
     Default: poc1-prod-service
@@ -58,7 +52,6 @@ Parameters:
     Type: Number
     Default: 3000
 
-  # VPC / networking — supply your own IDs
   VpcId:
     Type: AWS::EC2::VPC::Id
 
@@ -194,13 +187,9 @@ Resources:
                   - !GetAtt TestProject.Arn
               - Effect: Allow
                 Action:
-                  - codedeploy:CreateDeployment
-                  - codedeploy:GetDeployment
-                  - codedeploy:GetApplication
-                  - codedeploy:GetApplicationRevision
-                  - codedeploy:RegisterApplicationRevision
-                  - codedeploy:GetDeploymentConfig
                   - ecs:RegisterTaskDefinition
+                  - ecs:DescribeServices
+                  - ecs:UpdateService
                 Resource: '*'
               - Effect: Allow
                 Action:
@@ -219,7 +208,7 @@ Resources:
                 Resource: !Ref PipelineSNSTopic
 
   # =========================================================================
-  # IAM — CodeBuild service role (shared by build and test projects)
+  # IAM — CodeBuild service role
   # =========================================================================
   CodeBuildRole:
     Type: AWS::IAM::Role
@@ -308,7 +297,6 @@ Resources:
                   - secretsmanager:GetSecretValue
                 Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${AppName}/*'
 
-
   # =========================================================================
   # Security Groups
   # =========================================================================
@@ -339,7 +327,7 @@ Resources:
           SourceSecurityGroupId: !Ref ALBSecurityGroup
 
   # =========================================================================
-  # Application Load Balancer — Production (used by CodeDeploy blue/green)
+  # Application Load Balancer — Production
   # =========================================================================
   ProdALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -412,7 +400,6 @@ Resources:
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
       ContainerDefinitions:
         - Name: !Ref AppName
-          # Image is overwritten at deploy time by the CodeBuild artefact
           Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepositoryName}:latest'
           PortMappings:
             - ContainerPort: !Ref ContainerPort
@@ -432,16 +419,16 @@ Resources:
             Retries: 3
 
   # =========================================================================
-  # ECS Services
+  # ECS Service — Production (rolling update)
   # =========================================================================
-  StagingService:
+  ProdService:
     Type: AWS::ECS::Service
     DependsOn: ProdListener
     Properties:
-      ServiceName: !Ref StagingServiceName
+      ServiceName: !Ref ProdServiceName
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref TaskDefinition
-      DesiredCount: 1
+      DesiredCount: 0
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -449,34 +436,14 @@ Resources:
           SecurityGroups:
             - !Ref ECSSecurityGroup
           AssignPublicIp: ENABLED
+      LoadBalancers:
+        - ContainerName: !Ref AppName
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref ProdTargetGroupBlue
       DeploymentConfiguration:
         MaximumPercent: 200
         MinimumHealthyPercent: 100
 
-  ProdService:
-  Type: AWS::ECS::Service
-  DependsOn: ProdListener
-  Properties:
-    ServiceName: !Ref ProdServiceName
-    Cluster: !Ref ECSCluster
-    TaskDefinition: !Ref TaskDefinition
-    DesiredCount: 2
-    LaunchType: FARGATE
-    NetworkConfiguration:
-      AwsvpcConfiguration:
-        Subnets: !Ref SubnetIds
-        SecurityGroups:
-          - !Ref ECSSecurityGroup
-        AssignPublicIp: ENABLED
-    LoadBalancers:
-      - ContainerName: !Ref AppName
-        ContainerPort: !Ref ContainerPort
-        TargetGroupArn: !Ref ProdTargetGroupBlue
-    DeploymentConfiguration:
-      MaximumPercent: 200
-      MinimumHealthyPercent: 100
-
- 
   # =========================================================================
   # CodeBuild — Build Project
   # =========================================================================
@@ -491,7 +458,7 @@ Resources:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/standard:7.0
-        PrivilegedMode: true   # required for Docker builds
+        PrivilegedMode: true
         EnvironmentVariables:
           - Name: AWS_ACCOUNT_ID
             Value: !Ref AWS::AccountId
@@ -625,17 +592,13 @@ Resources:
                 Version: '1'
               Configuration:
                 NotificationArn: !Ref PipelineSNSTopic
-                CustomData: !Sub >-
-                  Approve deployment of #{SourceVariables.CommitId}
-                  by #{SourceVariables.AuthorDate}.
-                  Review changes before promoting to production.
-                ExternalEntityLink: !Sub 'https://github.com/${GitHubOwner}/${GitHubRepo}/commit/#{SourceVariables.CommitId}'
+                CustomData: 'Review changes before promoting to production. Approve to deploy to production environment.'
               RunOrder: 1
 
-        # ---- Stage 5: Deploy Staging ----
-        - Name: DeployStaging
+        # ---- Stage 5: Deploy Production (ECS rolling update) ----
+        - Name: DeployProd
           Actions:
-            - Name: DeployToStaging
+            - Name: DeployToProd
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
@@ -643,28 +606,11 @@ Resources:
                 Version: '1'
               Configuration:
                 ClusterName: !Ref ECSCluster
-                ServiceName: !Ref StagingServiceName
+                ServiceName: !Ref ProdServiceName
                 FileName: imagedefinitions.json
               InputArtifacts:
                 - Name: BuildArtifact
               RunOrder: 1
-
-        # ---- Stage 6: Deploy Production (Blue/Green) ----
-        - Name: DeployProd
-  Actions:
-    - Name: DeployToProd
-      ActionTypeId:
-        Category: Deploy
-        Owner: AWS
-        Provider: ECS
-        Version: '1'
-      Configuration:
-        ClusterName: !Ref ECSCluster
-        ServiceName: !Ref ProdServiceName
-        FileName: imagedefinitions.json
-      InputArtifacts:
-        - Name: BuildArtifact
-      RunOrder: 1
 
   # =========================================================================
   # CloudWatch Alarm — pipeline failure
@@ -698,7 +644,7 @@ Outputs:
 
   ECRRepositoryUri:
     Value: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepositoryName}'
-    Description: ECR repository URI — use in buildspec IMAGE_TAG env var
+    Description: ECR repository URI
 
   ArtifactBucketName:
     Value: !Ref ArtifactBucket

@@ -1,1 +1,1 @@
-aws cloudformation deploy --template-file .\pipeline-stack.yaml --stack-name poc1-pipeline --region eu-north-1 --capabilities CAPABILITY_NAMED_IAM --parameter-overrides file://params.json
+aws cloudformation deploy --template-file .\pipeline-stack.yaml --stack-name poc1-pipeline --region eu-west-1 --capabilities CAPABILITY_NAMED_IAM --parameter-overrides file://params.json

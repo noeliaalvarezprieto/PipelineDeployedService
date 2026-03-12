@@ -5,3 +5,14 @@ reports/
 .env.*
 npm-debug.log
 .DS_Store
+
+secret.json
+sonar-secret.json
+markers.json
+versions.json
+create-secret.ps1
+delete-stack.ps1
+delete-stack2.ps1
+empty-bucket.ps1
+deploy.ps1
+params.json

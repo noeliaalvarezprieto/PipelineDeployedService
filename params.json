@@ -1,1 +1,14 @@
-[{"ParameterKey":"AppName","ParameterValue":"poc1-app"},{"ParameterKey":"GitHubOwner","ParameterValue":"noeliaalvarezprieto"},{"ParameterKey":"GitHubRepo","ParameterValue":"PipelineDeployedService"},{"ParameterKey":"GitHubBranch","ParameterValue":"main"},{"ParameterKey":"CodeStarConnectionArn","ParameterValue":"arn:aws:codeconnections:eu-west-1:160823835871:connection/2b16d7d8-246c-4e94-9001-e91920438d97"},{"ParameterKey":"ApprovalEmail","ParameterValue":"A00047469@myTUDublin.ie"},{"ParameterKey":"ECRRepositoryName","ParameterValue":"poc1-app"},{"ParameterKey":"ECSClusterName","ParameterValue":"poc1-cluster"},{"ParameterKey":"StagingServiceName","ParameterValue":"poc1-staging-service"},{"ParameterKey":"ProdServiceName","ParameterValue":"poc1-prod-service"},{"ParameterKey":"VpcId","ParameterValue":"vpc-057134a5159c966a1"},{"ParameterKey":"SubnetIds","ParameterValue":"subnet-06a3e5eaaed91f021,subnet-0782b4b2674733680,subnet-0842852edaa3e0ecf"}]
+[
+  {"ParameterKey":"AppName","ParameterValue":"poc1-app"},
+  {"ParameterKey":"GitHubOwner","ParameterValue":"noeliaalvarezprieto"},
+  {"ParameterKey":"GitHubRepo","ParameterValue":"PipelineDeployedService"},
+  {"ParameterKey":"GitHubBranch","ParameterValue":"main"},
+  {"ParameterKey":"CodeStarConnectionArn","ParameterValue":"arn:aws:codeconnections:eu-west-1:160823835871:connection/2b16d7d8-246c-4e94-9001-e91920438d97"},
+  {"ParameterKey":"ApprovalEmail","ParameterValue":"A00047469@myTUDublin.ie"},
+  {"ParameterKey":"ECRRepositoryName","ParameterValue":"poc1-app"},
+  {"ParameterKey":"ECSClusterName","ParameterValue":"poc1-cluster"},
+  {"ParameterKey":"ProdServiceName","ParameterValue":"poc1-prod-service"},
+  {"ParameterKey":"ContainerPort","ParameterValue":"3000"},
+  {"ParameterKey":"VpcId","ParameterValue":"vpc-057134a5159c966a1"},
+  {"ParameterKey":"SubnetIds","ParameterValue":"subnet-06a3e5eaaed91f021,subnet-0782b4b2674733680,subnet-0842852edaa3e0ecf"}
+]

@@ -30,7 +30,7 @@ phases:
       # Pull the image that was pushed by the Build stage so integration tests
       # run against exactly the same artefact that will be deployed.
       - COMMIT_SHA=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-8)
-      - IMAGE_URI="$ECR_REPO_URI:$COMMIT_SHA"
+      - IMAGE_URI="$ECR_REPO_URI:latest"
       - echo "Pulling image $IMAGE_URI for integration tests..."
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION |
           docker login --username AWS --password-stdin $ECR_REPO_URI

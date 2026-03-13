@@ -3,7 +3,7 @@ const app = require('./app');
 const PORT = process.env.PORT || 3000;
 
 const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
+  console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode | v1.0.1`);
 });
 
 // Graceful shutdown for ECS task draining

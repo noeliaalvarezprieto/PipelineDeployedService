@@ -98,8 +98,9 @@ stages:
 
     # --- ESLint static analysis ---
     - script: |
-        npm run lint -- --format junit --output-file reports/lint-results.xml || true
+        npm run lint -- --format junit --output-file reports/lint-results.xml
       displayName: 'ESLint'
+      continueOnError: true 
       
 
     # --- Publish lint results ---

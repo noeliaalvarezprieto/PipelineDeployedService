@@ -1,3 +1,4 @@
+// Handles root endpoint requests
 exports.getIndex = (req, res) => {
   const config = {
     nodeEnv: process.env.NODE_ENV || 'development',

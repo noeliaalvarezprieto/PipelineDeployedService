@@ -62,3 +62,6 @@ The application is configured for ECS Fargate deployment with:
 - `appspec.yml` - CodeDeploy blue/green deployment spec
 - Health checks for ALB and ECS task monitoring
 - Graceful SIGTERM handling for task draining
+
+## PoC1 — AWS CodePipeline
+Pipeline deployed on AWS CodePipeline with ECS Fargate. March 2026.

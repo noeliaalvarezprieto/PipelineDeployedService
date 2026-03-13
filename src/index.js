@@ -1,3 +1,4 @@
+// Main router - registers all application routes
 const app = require('./app');
 
 const PORT = process.env.PORT || 3000;

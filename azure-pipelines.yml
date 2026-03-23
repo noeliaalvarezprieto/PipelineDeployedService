@@ -117,23 +117,18 @@ stages:
         testRunTitle: 'ESLint'
       condition: always()
 
-    # --- Generate coverage report for SonarCloud ---
-    - script: |
-        npx jest \
-          --testPathPattern='src/__tests__/unit' \
-          --coverage \
-          --coverageReporters=lcov \
-          --forceExit \
-          --ci
-      displayName: 'Jest coverage for SonarCloud'
-
-    # --- Normalize coverage path for SonarCloud (Windows agent) ---
+   # --- Generate coverage report for SonarCloud ---
     - powershell: |
-        $src = "$(System.DefaultWorkingDirectory)\coverage\lcov.info"
-        $dst = "$(System.DefaultWorkingDirectory)\coverage\lcov-sonar.info"
-        (Get-Content $src) -replace '\\','/' | Set-Content $dst
-        Write-Host "Coverage file normalized: $dst"
-      displayName: 'Normalize lcov path for SonarCloud'
+        npx jest `
+          --testPathPattern='src/__tests__/unit' `
+          --coverage `
+          --coverageReporters=lcov `
+          --coverageDirectory='coverage' `
+          --forceExit `
+          --ci
+        Write-Host "lcov.info path: $(Get-Location)\coverage\lcov.info"
+        Get-Item "coverage\lcov.info"
+      displayName: 'Jest coverage for SonarCloud'
 
     # --- SonarQube analysis (token from Key Vault) ---
     - task: SonarCloudPrepare@4
@@ -147,7 +142,7 @@ stages:
         cliSources: 'src'
         extraProperties: |
           sonar.exclusions=**/__tests__/**
-          sonar.javascript.lcov.reportPaths=coverage/lcov-sonar.info
+          sonar.javascript.lcov.reportPaths=coverage/lcov.info
           sonar.qualitygate.wait=true
 
     - task: SonarCloudAnalyze@4

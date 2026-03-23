@@ -117,6 +117,16 @@ stages:
         testRunTitle: 'ESLint'
       condition: always()
 
+    # --- Generate coverage report for SonarCloud ---
+    - script: |
+        npx jest \
+          --testPathPattern='src/__tests__/unit' \
+          --coverage \
+          --coverageReporters=lcov \
+          --forceExit \
+          --ci
+      displayName: 'Jest coverage for SonarCloud'
+
     # --- SonarQube analysis (token from Key Vault) ---
     - task: SonarCloudPrepare@4
       displayName: 'SonarCloud — prepare'

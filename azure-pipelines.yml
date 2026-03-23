@@ -127,6 +127,14 @@ stages:
           --ci
       displayName: 'Jest coverage for SonarCloud'
 
+    # --- Normalize coverage path for SonarCloud (Windows agent) ---
+    - powershell: |
+        $src = "$(System.DefaultWorkingDirectory)\coverage\lcov.info"
+        $dst = "$(System.DefaultWorkingDirectory)\coverage\lcov-sonar.info"
+        (Get-Content $src) -replace '\\','/' | Set-Content $dst
+        Write-Host "Coverage file normalized: $dst"
+      displayName: 'Normalize lcov path for SonarCloud'
+
     # --- SonarQube analysis (token from Key Vault) ---
     - task: SonarCloudPrepare@4
       displayName: 'SonarCloud — prepare'
@@ -139,9 +147,8 @@ stages:
         cliSources: 'src'
         extraProperties: |
           sonar.exclusions=**/__tests__/**
-          sonar.javascript.lcov.reportPaths=coverage/lcov.info
+          sonar.javascript.lcov.reportPaths=coverage/lcov-sonar.info
           sonar.qualitygate.wait=true
-          sonar.javascript.lcov.reportPaths=$(System.DefaultWorkingDirectory)/coverage/lcov.info
 
     - task: SonarCloudAnalyze@4
       displayName: 'SonarCloud — analyse'

@@ -150,62 +150,74 @@ Resources:
       LogGroupName: !Sub '/codebuild/${AppName}-test'
       RetentionInDays: 30
 
-  # =========================================================================
-  # IAM — CodePipeline service role
-  # =========================================================================
-  CodePipelineRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub '${AppName}-codepipeline-role'
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: codepipeline.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: CodePipelinePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:GetObjectVersion
-                  - s3:GetBucketVersioning
-                Resource:
-                  - !GetAtt ArtifactBucket.Arn
-                  - !Sub '${ArtifactBucket.Arn}/*'
-              - Effect: Allow
-                Action:
-                  - codebuild:BatchGetBuilds
-                  - codebuild:StartBuild
-                Resource:
-                  - !GetAtt BuildProject.Arn
-                  - !GetAtt TestProject.Arn
-              - Effect: Allow
-                Action:
-                  - ecs:RegisterTaskDefinition
-                  - ecs:DescribeServices
-                  - ecs:UpdateService
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - iam:PassRole
-                Resource: '*'
-                Condition:
-                  StringLike:
-                    'iam:PassedToService': ecs-tasks.amazonaws.com
-              - Effect: Allow
-                Action:
-                  - codestar-connections:UseConnection
-                Resource: !Ref CodeStarConnectionArn
-              - Effect: Allow
-                Action:
-                  - sns:Publish
-                Resource: !Ref PipelineSNSTopic
+ # =========================================================================
+# IAM — CodePipeline service role
+# =========================================================================
+CodePipelineRole:
+  Type: AWS::IAM::Role
+  Properties:
+    RoleName: !Sub '${AppName}-codepipeline-role'
+    AssumeRolePolicyDocument:
+      Version: '2012-10-17'
+      Statement:
+        - Effect: Allow
+          Principal:
+            Service: codepipeline.amazonaws.com
+          Action: sts:AssumeRole
+    Policies:
+      - PolicyName: CodePipelinePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:GetObjectVersion
+                - s3:GetBucketVersioning
+              Resource:
+                - !GetAtt ArtifactBucket.Arn
+                - !Sub '${ArtifactBucket.Arn}/*'
+
+            - Effect: Allow
+              Action:
+                - codebuild:BatchGetBuilds
+                - codebuild:StartBuild
+              Resource:
+                - !GetAtt BuildProject.Arn
+                - !GetAtt TestProject.Arn
+
+            - Effect: Allow
+              Action:
+                - ecs:RegisterTaskDefinition
+                - ecs:DescribeServices
+                - ecs:UpdateService
+                - ecs:DescribeTaskDefinition
+                - ecs:DescribeClusters
+                - ecs:ListTaskDefinitions
+                - ecs:ListServices
+              Resource: "*"
+
+            - Effect: Allow
+              Action:
+                - iam:PassRole
+              Resource: "*"
+              Condition:
+                StringLike:
+                  iam:PassedToService:
+                    - ecs.amazonaws.com
+                    - ecs-tasks.amazonaws.com
+
+            - Effect: Allow
+              Action:
+                - codestar-connections:UseConnection
+              Resource: !Ref CodeStarConnectionArn
+
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref PipelineSNSTopic
+
 
   # =========================================================================
   # IAM — CodeBuild service role

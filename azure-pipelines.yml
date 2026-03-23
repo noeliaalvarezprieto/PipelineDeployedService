@@ -95,6 +95,11 @@ stages:
     # --- Install dependencies (ci = exact versions from package-lock.json) ---
     - script: npm ci --prefer-offline
       displayName: 'npm ci'
+    
+     # --- Dependency vulnerability check ---
+    - script: npm audit --audit-level=high
+      displayName: 'npm audit — dependency vulnerabilities'
+      continueOnError: false
 
     # --- ESLint static analysis ---
     - script: |
@@ -125,6 +130,7 @@ stages:
         extraProperties: |
           sonar.exclusions=**/__tests__/**
           sonar.javascript.lcov.reportPaths=coverage/lcov.info
+          sonar.qualitygate.wait=true
 
     - task: SonarCloudAnalyze@4
       displayName: 'SonarCloud — analyse'
@@ -156,6 +162,17 @@ stages:
         arguments: >
           --build-arg NODE_ENV=production
           --build-arg VCS_REF=$(Build.SourceVersion)
+
+      # --- Container vulnerability scan (Trivy) ---
+    - powershell: |
+        Invoke-WebRequest -Uri "https://github.com/aquasecurity/trivy/releases/download/v0.51.1/trivy_0.51.1_windows-64bit.zip" -OutFile trivy.zip
+        Expand-Archive -Path trivy.zip -DestinationPath trivy-bin -Force
+        .\trivy-bin\trivy.exe image `
+          --exit-code 1 `
+          --severity HIGH,CRITICAL `
+          --no-progress `
+          "$(acrLoginServer)/$(imageRepository):$(imageTag)"
+      displayName: 'Trivy — container vulnerability scan'
 
     # --- Docker: push to ACR ---
     - task: Docker@2

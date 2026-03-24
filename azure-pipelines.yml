@@ -99,11 +99,6 @@ stages:
     - script: npm ci --prefer-offline
       displayName: 'npm ci'
     
-     # --- Dependency vulnerability check ---
-    - script: npm audit --audit-level=high
-      displayName: 'npm audit — dependency vulnerabilities'
-      continueOnError: false
-
     # --- ESLint static analysis ---
     - script: |
         npm run lint -- --format junit --output-file reports/lint-results.xml

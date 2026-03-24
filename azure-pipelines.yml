@@ -181,9 +181,7 @@ stages:
 
       # --- Container vulnerability scan (Trivy) ---
     - powershell: |
-        Invoke-WebRequest -Uri "https://github.com/aquasecurity/trivy/releases/download/v0.51.1/trivy_0.51.1_windows-64bit.zip" -OutFile trivy.zip
-        Expand-Archive -Path trivy.zip -DestinationPath trivy-bin -Force
-        .\trivy-bin\trivy.exe image `
+        trivy image `
           --exit-code 1 `
           --severity HIGH,CRITICAL `
           --no-progress `

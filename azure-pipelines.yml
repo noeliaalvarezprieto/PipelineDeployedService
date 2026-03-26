@@ -104,7 +104,6 @@ stages:
         New-Item -ItemType Directory -Force -Path reports | Out-Null
         npm run lint
       displayName: 'ESLint'
-      shell: pwsh
       continueOnError: true
       
 

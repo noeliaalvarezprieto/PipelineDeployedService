@@ -101,7 +101,7 @@ stages:
     
     # --- ESLint static analysis ---
     - script: |
-        New-Item -ItemType Directory -Force -Path reports | Out-Null
+        if not exist reports mkdir reports
         npm run lint
       displayName: 'ESLint'
       continueOnError: true

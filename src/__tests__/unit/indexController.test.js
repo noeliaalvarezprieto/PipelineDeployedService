@@ -12,7 +12,10 @@ describe('Index Controller', () => {
     indexController.getIndex(req, res);
 
     expect(res.json).toHaveBeenCalled();
-   
+    const response = res.json.mock.calls[0][0];
+    expect(response).toHaveProperty('message');
+    expect(response).toHaveProperty('environment');
+    expect(response).toHaveProperty('timestamp');
   });
 
   // NUEVO TEST: Cuando NODE_ENV no está definido (cubre el branch || 'development')
@@ -49,7 +52,7 @@ describe('Index Controller', () => {
 
     indexController.getIndex(req, res);
 
-    const response = res.json.mock.calls[0][0];
+    
     // Verificar que el config interno tiene estos valores (si los expones en la respuesta)
     // O verificar que no hay error
     

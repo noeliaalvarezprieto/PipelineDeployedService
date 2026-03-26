@@ -101,9 +101,11 @@ stages:
     
     # --- ESLint static analysis ---
     - script: |
-        npm run lint -- --format junit --output-file reports/lint-results.xml
+        New-Item -ItemType Directory -Force -Path reports | Out-Null
+        npm run lint
       displayName: 'ESLint'
-      continueOnError: true 
+      shell: pwsh
+      continueOnError: true
       
 
     # --- Publish lint results ---

@@ -3,6 +3,7 @@ version: 0.2
 env:
   secrets-manager:
     SONAR_TOKEN: poc1-app/sonar:token
+    DB_URL: poc1-app/db-prod:url
   variables:
     NODE_ENV: production
 

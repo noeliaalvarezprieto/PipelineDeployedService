@@ -13,7 +13,7 @@ env:
   secrets-manager:
     # Any test-time secrets (e.g. a test-database connection string) are
     # resolved from Secrets Manager — no plaintext values in this file.
-    TEST_DB_URL: poc1-app/test:db_url
+    TEST_DB_URL: poc1-app/db-staging:url
 
 phases:
 

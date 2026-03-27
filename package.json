@@ -33,6 +33,7 @@
   "license": "ISC",
   "dependencies": {
     "express": "^4.18.0",
+    "lodash": "4.17.15",
     "semver": "5.7.1"
   },
   "devDependencies": {

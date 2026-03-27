@@ -13,8 +13,13 @@
     },
     {
       "Effect": "Allow",
-      "Action": ["ecs:RegisterTaskDefinition","ecs:DescribeServices","ecs:UpdateService","ecs:DescribeTaskDefinition","ecs:DescribeClusters","ecs:ListTaskDefinitions","ecs:ListServices"],
-      "Resource": ["arn:aws:ecs:eu-west-1:160823835871:cluster/poc1-cluster","arn:aws:ecs:eu-west-1:160823835871:service/poc1-cluster/poc1-prod-service","arn:aws:ecs:eu-west-1:160823835871:task-definition/poc1-app-task:*"]
+      "Action": ["ecs:RegisterTaskDefinition","ecs:DescribeTaskDefinition","ecs:ListTaskDefinitions"],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["ecs:DescribeServices","ecs:UpdateService","ecs:DescribeClusters","ecs:ListServices"],
+      "Resource": ["arn:aws:ecs:eu-west-1:160823835871:cluster/poc1-cluster","arn:aws:ecs:eu-west-1:160823835871:service/poc1-cluster/poc1-prod-service"]
     },
     {
       "Effect": "Allow",

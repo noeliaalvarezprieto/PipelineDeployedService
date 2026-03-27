@@ -152,12 +152,14 @@ stages:
       inputs:
         pollingTimeoutSec: '300'
 
-    # --- Docker: log in to ACR ---
-    - task: Docker@2
+    - task: AzureCLI@2
       displayName: 'ACR login'
       inputs:
-        command: login
-        containerRegistry: 'acr-service-connection'
+       azureSubscription: $(azureServiceConnection)
+       scriptType: ps
+       scriptLocation: inlineScript
+       inlineScript: |
+          az acr login --name $(acrName)
 
     # --- Docker: build image with layer-cache optimisation ---
     - task: Docker@2
@@ -259,11 +261,14 @@ stages:
       displayName: 'npm ci (with devDependencies)'
 
     # --- ACR login to pull the built image ---
-    - task: Docker@2
+    - task: AzureCLI@2
       displayName: 'ACR login'
       inputs:
-        command: login
-        containerRegistry: 'acr-service-connection'
+        azureSubscription: $(azureServiceConnection)
+        scriptType: ps
+        scriptLocation: inlineScript
+        inlineScript: |
+          az acr login --name $(acrName)
 
   # --- Pull the exact image built in the Build stage ---
     - script: docker pull $(acrLoginServer)/$(imageRepository):latest

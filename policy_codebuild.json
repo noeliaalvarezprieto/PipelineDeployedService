@@ -1,0 +1,35 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"],
+      "Resource": ["arn:aws:logs:eu-west-1:160823835871:log-group:/codebuild/poc1-app-build:*","arn:aws:logs:eu-west-1:160823835871:log-group:/codebuild/poc1-app-test:*","arn:aws:logs:eu-west-1:160823835871:log-group:/codebuild/poc1-app-build:*:*","arn:aws:logs:eu-west-1:160823835871:log-group:/codebuild/poc1-app-test:*:*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject","s3:PutObject","s3:GetObjectVersion"],
+      "Resource": ["arn:aws:s3:::poc1-app-artifacts-160823835871-eu-west-1","arn:aws:s3:::poc1-app-artifacts-160823835871-eu-west-1/*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["ecr:GetAuthorizationToken"],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["ecr:BatchCheckLayerAvailability","ecr:GetDownloadUrlForLayer","ecr:BatchGetImage","ecr:PutImage","ecr:InitiateLayerUpload","ecr:UploadLayerPart","ecr:CompleteLayerUpload"],
+      "Resource": "arn:aws:ecr:eu-west-1:160823835871:repository/poc1-app"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["secretsmanager:GetSecretValue"],
+      "Resource": "arn:aws:secretsmanager:eu-west-1:160823835871:secret:poc1-app/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["codebuild:CreateReportGroup","codebuild:CreateReport","codebuild:UpdateReport","codebuild:BatchPutTestCases","codebuild:BatchPutCodeCoverages"],
+      "Resource": "arn:aws:codebuild:eu-west-1:160823835871:report-group/poc1-app-*"
+    }
+  ]
+}

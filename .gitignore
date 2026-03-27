@@ -16,3 +16,22 @@ delete-stack2.ps1
 empty-bucket.ps1
 deploy.ps1
 params.json
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+security_report.html
+
+# Temporary AWS CLI policy files
+lifecycle.json
+rules.json
+trail-bucket-policy.json
+policy_pipeline.json
+policy_codebuild.json
+secret.json
+# Node
+node_modules/
+coverage/
+
+# Environment
+.env

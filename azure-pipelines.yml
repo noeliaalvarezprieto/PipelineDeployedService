@@ -162,20 +162,15 @@ stages:
           az acr login --name $(acrName)
 
     # --- Docker: build image with layer-cache optimisation ---
-    - task: Docker@2
+    - powershell: |
+        docker build `
+          --build-arg NODE_ENV=production `
+          --build-arg VCS_REF=$(Build.SourceVersion) `
+          -t "$(acrLoginServer)/$(imageRepository):$(imageTag)" `
+          -t "$(acrLoginServer)/$(imageRepository):latest" `
+          -f $(dockerfilePath) `
+          $(Build.SourcesDirectory)
       displayName: 'Docker build'
-      inputs:
-        command: build
-        repository: $(imageRepository)
-        containerRegistry: 'acr-service-connection'
-        dockerfile: $(dockerfilePath)
-        buildContext: $(Build.SourcesDirectory)
-        tags: |
-          $(imageTag)
-          latest
-        arguments: >
-          --build-arg NODE_ENV=production
-          --build-arg VCS_REF=$(Build.SourceVersion)
 
       # --- Container vulnerability scan (Trivy) ---
     - powershell: |
@@ -188,15 +183,10 @@ stages:
       displayName: 'Trivy — container vulnerability scan'
 
     # --- Docker: push to ACR ---
-    - task: Docker@2
+    - powershell: |
+        docker push "$(acrLoginServer)/$(imageRepository):$(imageTag)"
+        docker push "$(acrLoginServer)/$(imageRepository):latest"
       displayName: 'Docker push'
-      inputs:
-        command: push
-        repository: $(imageRepository)
-        containerRegistry: 'acr-service-connection'
-        tags: |
-          $(imageTag)
-          latest
 
     # --- Write image digest to a variable file for downstream stages ---
     - powershell: |

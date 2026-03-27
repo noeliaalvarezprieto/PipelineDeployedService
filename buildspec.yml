@@ -18,6 +18,10 @@ phases:
 
   pre_build:
     commands:
+      # --- Dependency vulnerability scan ---
+      - echo "Running npm audit..."
+      - npm audit --audit-level=high
+      - echo "npm audit passed."
       - echo "Logging in to Amazon ECR..."
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION |
           docker login --username AWS --password-stdin $ECR_REPO_URI
@@ -48,6 +52,15 @@ phases:
       - docker push $IMAGE_URI
       - docker push $IMAGE_LATEST
       - echo "ECR push complete."
+      - echo "Scanning image with Trivy..."
+      - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+      - trivy image
+          --exit-code 1
+          --severity HIGH,CRITICAL
+          --ignore-unfixed
+          --no-progress
+          $IMAGE_URI
+      - echo "Trivy scan passed."
 
   post_build:
     commands:

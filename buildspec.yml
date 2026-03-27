@@ -21,6 +21,8 @@ phases:
     commands:
       # --- Dependency vulnerability scan ---
       - echo "Running npm audit..."
+      - rm -rf node_modules
+      - npm install
       - npm audit --audit-level=high
       - echo "npm audit passed."
       - echo "Logging in to Amazon ECR..."

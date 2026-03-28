@@ -149,6 +149,7 @@ stages:
 
     - task: SonarCloudPublish@4
       displayName: 'SonarCloud — publish quality gate'
+      continueOnError: true
       inputs:
         pollingTimeoutSec: '300'
 

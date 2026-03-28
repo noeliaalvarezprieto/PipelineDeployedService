@@ -17,3 +17,4 @@ process.on('SIGTERM', () => {
 });
 
 module.exports = server;
+// zero-downtime deployment test - 28 March 2026
